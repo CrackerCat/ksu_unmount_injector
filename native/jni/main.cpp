@@ -53,25 +53,53 @@ void kill_other(struct stat me){
     });
 }
 
-int main(int argc, char **argv) {
-    if (getuid() != 0)
-        return -1;
-
+static bool check_ksu_version() {
+    if (getuid() != 0) {
+        printf("Root access is required for this action!\n");
+        return false;
+    }
     int ksu_version = -1;
     prctl(0xdeadbeef, 2, &ksu_version, 0, 0);
     if (ksu_version < 0) {
         printf("KernelSU is not installed (%d)\n", ksu_version);
-        return 1;
-    } else if (ksu_version < 10940) {
+        return false;
+    }
+    if (ksu_version < 10940) {
         printf("KernelSU version (%d) is lower than 10940\n", ksu_version);
+        return false;
+    }
+    // TODO: Check capabilities, permissive context, ...
+    return true;
+}
+
+int main(int argc, char **argv) {
+    const char *binname = basename(argv[0]);
+
+    if (strcmp(binname, "ksuhide") != 0) {
+        int32_t result = -1;
+        prctl(0xdeadbeef, 0, 0, 0, &result);
+        if (result != -1) {
+            if (!check_ksu_version()) return 1;
+            char *argv_exec[argc+1];
+            argv_exec[0] = (char*)binname;
+            for (int i = 1; i < argc; i++)
+                argv_exec[i] = argv[i];
+            argv_exec[argc] = nullptr;
+#define KSUD_PATH "/data/adb/ksud"
+#ifdef DEBUG
+            for (int i = 0; argv_exec[i]; i++) {
+            	fprintf(stderr, "argv[%d] = [%s]\n", i, argv_exec[i]);
+            }
+#endif
+            execve(KSUD_PATH, argv_exec, environ);
+        }
         return 1;
     }
 
+    if (!check_ksu_version()) return 1;
+
     if (argc >= 2 && strcmp(argv[1], "check") == 0)
         return 0;
-
-    if (switch_mnt_ns(1))
-        return -1;
 
     if (argc >= 2 && strcmp(argv[1], "exec") == 0) {
         if (argc >= 3 && unshare(CLONE_NEWNS) == 0) {
@@ -82,13 +110,29 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    struct stat me;
-    myself = getpid();
-
+#ifdef DEBUG
     if (argc >= 2 && strcmp(argv[1], "--test") == 0) {
         proc_monitor();
         return 0;
     }
+#endif
+
+    if (argc < 2 || strcmp(argv[1], "daemon") != 0) {
+        fprintf(stderr, "usage: %s [OPTION]\n\n"
+                        "OPTION:\n"
+                        "check         Check compatible\n"
+                        "daemon        Launch new daemon\n"
+                        "exec CMD      Execute command in isolated mount namespace\n"
+                        "              and do all unmounts\n"
+                        "\n", binname);
+        return 1;
+    }
+
+    if (switch_mnt_ns(1))
+        return -1;
+
+    struct stat me;
+    myself = getpid();
 
     if (stat("/proc/self/exe", &me) != 0)
         return 1;

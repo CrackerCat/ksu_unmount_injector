@@ -11,7 +11,11 @@ chmod 755 "$MODPATH/ksuhide"
 if ! "$MODPATH/ksuhide" check; then
     abort
 fi
+mkdir -p "$MODPATH/system/etc" "$MODPATH/system/bin"
 
 ui_print "- Enable systemless hosts"
-mkdir -p "$MODPATH/system/etc"
 cp -af /system/etc/hosts "$MODPATH/system/etc"
+
+ui_print "- Enable sucompat"
+ln "$MODPATH/ksuhide" "$MODPATH/system/bin/ksuhide"
+ln -s "./ksuhide" "$MODPATH/system/bin/ksud"
