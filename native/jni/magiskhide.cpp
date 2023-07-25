@@ -518,6 +518,8 @@ void do_check_fork() {
             auto con = get_content(pid, "attr/current");
             if (con == "u:r:zygote:s0")
                 continue;
+            sprintf(path, "/proc/%d/ns/mnt", pid);
+            close(open(path, O_RDONLY | O_NOATIME));
             if (con == "u:r:system_server:s0") {
                 LOGI("proc_monitor: system_server PID=[%d]\n", pid);
                 read_ns(pid, &st);
